@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Changed
 
 - `mem extract` now requires a configured provider (was: env-var endpoint / local heuristics).
+- `mem recall` and `mem list` now support `--project <name>` filtering (matching `mem remember`).
 
 ## [1.0.0] - 2026-08-16
 

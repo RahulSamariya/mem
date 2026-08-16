@@ -96,6 +96,7 @@ mem recall "why did we pick sqlite"
 mem recall "what broke when we tried redis" --limit 3
 mem recall "vector search" --files src/store.ts          # file-path boost
 mem recall "sqlite decision" --strategy file_boost_recency --json
+mem recall "banking app" --project Java1                # scope to one project
 ```
 
 Every result shows its tier, score, age, project, and id. `--json` emits structured output (scriptable).
@@ -118,6 +119,7 @@ mem eval --queries my-eval.json
 
 ```bash
 mem list                     # newest-first
+mem list --project Java1     # only one project
 mem list --json
 mem delete <id>
 mem db                       # db path + memory count
