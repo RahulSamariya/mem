@@ -73,8 +73,9 @@ program
   .option('--limit <n>', 'number of results', '5')
   .option('--files <files>', 'comma-separated file paths for file boost')
   .option('--strategy <name>', 'semantic|file_boost|file_boost_recency', 'semantic')
+  .option('--project <name>', 'only return memories from this project')
   .option('--json', 'JSON output')
-  .action(async (query: string, opts: { limit: string; files?: string; strategy: string; json?: boolean }) => {
+  .action(async (query: string, opts: { limit: string; files?: string; strategy: string; project?: string; json?: boolean }) => {
     let q = query;
     if (!q) {
       q = await new Promise<string>((res) => {
@@ -90,7 +91,7 @@ program
       process.exit(1);
     }
     const files = opts.files ? opts.files.split(',').map((f) => f.trim()).filter(Boolean) : [];
-    const results = await recall(q, { limit: parseInt(opts.limit, 10) || 5, strategy: opts.strategy as any, files });
+    const results = await recall(q, { limit: parseInt(opts.limit, 10) || 5, strategy: opts.strategy as any, files, projectFilter: opts.project });
     if (opts.json) {
       console.log(JSON.stringify(results, null, 2));
       return;
@@ -151,9 +152,11 @@ program
 program
   .command('list')
   .description('List all memories')
+  .option('--project <name>', 'only list memories from this project')
   .option('--json', 'JSON output')
-  .action(async (opts: { json?: boolean }) => {
-    const rows = await getAllMemories();
+  .action(async (opts: { project?: string; json?: boolean }) => {
+    const all = await getAllMemories();
+    const rows = opts.project ? all.filter((r) => r.project === opts.project) : all;
     if (opts.json) { console.log(JSON.stringify(rows, null, 2)); return; }
     console.log(`${rows.length} memories.`);
     for (const r of rows) {
