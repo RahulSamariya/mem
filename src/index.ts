@@ -18,6 +18,7 @@ import {
 import { storeMemory, recall, getAllMemories, deleteMemory, countMemories, reembedAll } from './store';
 import { seedFromRepo, formatCandidates, CandidateMemory } from './seed';
 import { runEval, formatSummary, EvalCase, bestStrategy } from './eval';
+import { generateEval, writeEvalFile } from './gen';
 import { extractAndStore, runExtractionEval, LabeledCommit, describeConfig, loadConfig } from './extract';
 import { getAppliedVersions, discoverMigrations } from './migrate';
 
@@ -199,6 +200,39 @@ program
     console.log(formatSummary(fbr, 'file_boost_recency'));
     const best = bestStrategy(foo, fbo, fbr);
     console.log(`\nBEST: ${best.name} @ precision@3 = ${(best.summary.precision_at_3 * 100).toFixed(1)}%`);
+  });
+
+program
+  .command('eval-gen')
+  .description('Generate a large eval query set from stored memories (auto-fills expected_memory_id)')
+  .option('--per-memory <n>', 'queries per memory (template mode)', '6')
+  .option('--negatives <n>', 'number of negative queries (expect no match)', '4')
+  .option('--project <name>', 'only generate for this project')
+  .option('--out <path>', 'output file (default: eval/queries.json)')
+  .option('--llm', 'use configured provider to paraphrase instead of templates')
+  .option('--provider <name>', 'override provider: ollama|anthropic (used with --llm)')
+  .option('--api-key <key>', 'override API key')
+  .action(async (opts: { perMemory?: string; negatives?: string; project?: string; out?: string; llm?: boolean; provider?: string; apiKey?: string }) => {
+    const cfg = loadConfig();
+    const providerName = opts.provider ?? cfg.name ?? undefined;
+    const provider = providerName
+      ? { name: providerName, endpoint: cfg.endpoint, model: cfg.model }
+      : undefined;
+    const cases = await generateEval({
+      perMemory: parseInt(opts.perMemory ?? '6', 10),
+      negatives: parseInt(opts.negatives ?? '4', 10),
+      project: opts.project,
+      out: opts.out,
+      llm: opts.llm,
+      provider,
+      apiKey: opts.apiKey,
+    });
+    if (cases.length === 0) {
+      console.error('no memories to generate from. Add memories first (`mem remember ...` or `mem init`).');
+      process.exit(1);
+    }
+    await writeEvalFile(cases, opts.out);
+    console.log(`tip: run "mem eval --queries ${opts.out ?? 'eval/queries.json'}" to measure precision.`);
   });
 
 program

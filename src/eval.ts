@@ -30,8 +30,18 @@ export async function runEval(
   for (const c of cases) {
     const results = await recall(c.query, { limit, strategy, files });
     const topIds = results.map((r) => r.id);
-    const in1 = c.expected_memory_id !== null && topIds[0] === c.expected_memory_id;
-    const in3 = c.expected_memory_id !== null && topIds.includes(c.expected_memory_id);
+    // "none" = negative query: pass when nothing is retrieved with confidence.
+    const isNegative = c.expected_memory_id === 'none';
+    let in1: boolean;
+    let in3: boolean;
+    if (isNegative) {
+      const topScore = results.length > 0 ? results[0].score : 0;
+      in1 = results.length === 0 || topScore < 0.35; // low-confidence match counts as "nothing relevant"
+      in3 = in1;
+    } else {
+      in1 = c.expected_memory_id !== null && topIds[0] === c.expected_memory_id;
+      in3 = c.expected_memory_id !== null && topIds.includes(c.expected_memory_id);
+    }
     hits1.push(in1);
     hits3.push(in3);
     samples.push({
