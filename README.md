@@ -121,18 +121,63 @@ mem list                     # newest-first
 mem list --json
 mem delete <id>
 mem db                       # db path + memory count
+mem migrate                  # show/apply schema migrations
 ```
 
-### LLM-assisted extraction (experimental, opt-in)
+### LLM-assisted extraction (Phase 5, opt-in)
+
+Extracts durable knowledge from **git history** (the one signal every tool touches identically — keeps the core universal). Batch, on demand. Nothing writes without your `y/n`.
 
 ```bash
-# local heuristic mode — never sends anything out
-mem extract --local-only --dry-run
+# 1. configure a provider first (required — nothing calls a cloud silently)
+mem config set-provider ollama      # local, free; uses Ollama at localhost:11434
+mem config set-provider anthropic   # cloud; requires ANTHROPIC_API_KEY env
+mem config                          # show current provider
 
-# LLM mode — set endpoint/key via env or flags; always proposes, never auto-stores
-MEM_LLM_ENDPOINT=https://api.openai.com/v1/chat/completions \
-MEM_LLM_API_KEY=sk-... MEM_LLM_MODEL=gpt-4o-mini \
-mem extract
+# 2. extract from recent commits (propose + y/n per candidate, stores with source=git_seed)
+mem extract --since HEAD~20
+mem extract --dry-run               # propose only, store nothing
+mem extract --provider anthropic    # override provider for this run only
+
+# 3. measure it before trusting it (hand-label 20-30 commits you know)
+mem extract-eval eval/labels.json --provider ollama   # precision / recall / F1
+```
+
+- **Dedup before proposing:** each candidate is checked against existing memories (semantic score > 0.87 skips it as a near-duplicate).
+- **Unconfigured state errors** with setup instructions — it never silently calls a cloud API.
+- Anthropic mode prints a visible note that diffs are being sent off-machine.
+- Extracted memories carry `last_validated_at` and `source: git_seed` just like everything else — extraction doesn't get a pass on staleness.
+
+## Configuration
+
+Persisted in `~/.mem/config.json`.
+
+```bash
+mem config set-provider <ollama|anthropic> [--endpoint <url>] [--model <name>]
+mem config
+```
+
+Provider overrides for a single run: `--provider`, `--endpoint`, `--api-key`, `--model` on `mem extract`.
+
+## Schema migrations
+
+Schema is versioned, never hand-edited in place. Numbered SQL files live in `migrations/`, tracked in a `schema_migrations` table, and are applied in order on startup.
+
+```bash
+mem migrate       # show applied/pending migrations (also auto-applies)
+```
+
+Add a migration (e.g. `migrations/003_something.sql`) rather than editing `001_init.sql` once real data exists.
+
+## Embedding model upgrades
+
+Swapping the embedding model invalidates every stored vector (different vector space → silently worse recall). Every row records its `embedding_model_version`. Guard rails:
+
+- `recall` warns if any memory has a stale model version.
+- After an upgrade, re-run all memories through the current model:
+
+```bash
+mem reembed       # re-embeds every memory in place
 ```
 
 ## MCP server
@@ -179,7 +224,7 @@ mem remember "Redis broke local-first" --tier failed_approach
 2. **`file_boost`** — semantic `+` file-path overlap boost
 3. **`file_boost_recency`** — file boost `+` recency decay (halves per ~month)
 
-Bundled eval set (16 queries): **100% top-3 precision on all three strategies** — metric that matters is the number you reproduce. Run it yourself against your own project's memories to decide shipping strategy.
+Bundled eval set (16 queries): **100% top-3 precision on all three strategies** — but the number that matters is the one you reproduce. Run it yourself against your own project's memories to decide shipping strategy. Extraction (Phase 5) has its own hand-labeled eval via `mem extract-eval`.
 
 ## Design & data model
 
@@ -220,15 +265,18 @@ Layout:
 
 ```
 src/
-  core.ts        # constants, schema init, helpers (age labels, file overlap)
+  core.ts        # constants, schema/migration init, helpers (age labels, file overlap, config)
+  migrate.ts     # schema migration runner (migrations/ dir + schema_migrations table)
   embed.ts       # local embeddings via @xenova/transformers
-  store.ts       # DB read/write, `recall` ranking strategies
+  store.ts       # DB read/write, `recall` ranking strategies, reembed
   seed.ts        # git-log candidate extraction for `mem init`
-  eval.ts        # eval runner + strategy comparison
-  extract.ts     # Phase 5 opt-in LLM/local extraction
+  eval.ts        # retrieval eval runner + strategy comparison
+  extract.ts     # Phase 5: git-based extraction providers (ollama/anthropic) + extraction eval
   index.ts       # CLI (commander)
   mcp-server.ts  # MCP stdio server
-eval/queries.json  # bundled eval set
+migrations/      # numbered schema migrations (001_init.sql, 002_add_embedding_model_version.sql)
+eval/queries.json     # bundled retrieval eval set
+eval/EXTRACT_EVAL.md  # how to build labels for mem extract-eval
 ```
 
 ## Roadmap
@@ -237,7 +285,8 @@ eval/queries.json  # bundled eval set
 - [x] Phase 2 — `mem init` git-history seeding
 - [x] Phase 3 — `mem eval` retrieval benchmarking
 - [x] Phase 4 — MCP stdio wrapper + multi-tool config docs
-- [x] Phase 5 — LLM-assisted extraction (opt-in)
+- [x] Phase 5 — git-based LLM extraction (providers, dedup, extraction eval)
+- [x] §8 — Schema migrations + embedding-model versioning (`mem migrate`, `mem reembed`)
 - [ ] Session-scoped recall (`--session <id>`) and per-project DBs
 - [ ] `last_validated_at` updates on confirmed recalls
 

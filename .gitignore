@@ -7,6 +7,13 @@ dist/
 # Runtime data (local-only memory store, model cache)
 ~/.mem/
 .mem/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+
+# Eval outputs (hand-labeled eval results must not be committed)
+eval/results/
 
 # Logs
 *.log
@@ -28,3 +35,6 @@ Thumbs.db
 
 # Misc
 *.tsbuildinfo
+
+# Internal design docs
+mem-mcp-build-brief.md

@@ -10,7 +10,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 - Session-scoped recall (`--session <id>`) and per-project DBs.
 - `last_validated_at` updates on confirmed recalls.
-- LLM extraction tuning against longer diffs.
+
+## [1.1.0] - 2026-08-16
+
+### Added
+
+- Schema migration system (`migrations/` + `schema_migrations` table, auto-applied on open, `mem migrate`).
+- Embedding model versioning: `embedding_model_version` column + `mem reembed`; `recall` warns on stale vectors (§8).
+- Git-based LLM extraction (`mem extract --since <ref>`) with provider config:
+  - `mem config set-provider ollama|anthropic`, persisted in `~/.mem/config.json`.
+  - Unconfigured state errors with setup instructions — nothing sent off-machine silently.
+  - Dedup: near-duplicate candidates (semantic score > 0.87) skipped before proposing.
+  - Extraction eval: `mem extract-eval <labels.json>` reports precision / recall / F1.
+
+### Changed
+
+- `mem extract` now requires a configured provider (was: env-var endpoint / local heuristics).
 
 ## [1.0.0] - 2026-08-16
 

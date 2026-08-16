@@ -3,6 +3,7 @@ import { program } from 'commander';
 import { readFileSync, existsSync, statSync } from 'fs';
 import * as readline from 'readline';
 import { resolve } from 'path';
+import packageJson = require('../package.json');
 import {
   Tier,
   Source,
@@ -11,11 +12,14 @@ import {
   ensureMemHome,
   DB_PATH,
   projectName,
+  readConfig,
+  writeConfig,
 } from './core';
-import { storeMemory, recall, getAllMemories, deleteMemory, countMemories } from './store';
+import { storeMemory, recall, getAllMemories, deleteMemory, countMemories, reembedAll } from './store';
 import { seedFromRepo, formatCandidates, CandidateMemory } from './seed';
 import { runEval, formatSummary, EvalCase, bestStrategy } from './eval';
-import { extractAndStore } from './extract';
+import { extractAndStore, runExtractionEval, LabeledCommit, describeConfig, loadConfig } from './extract';
+import { getAppliedVersions, discoverMigrations } from './migrate';
 
 const VALID_TIERS: Tier[] = ['decision', 'constraint', 'failed_approach', 'raw'];
 
@@ -42,7 +46,7 @@ function ask(prompt: string): Promise<string> {
 program
   .name('mem')
   .description('Universal contextual memory for AI coding tools (CLI + MCP)')
-  .version('1.0.0');
+  .version(packageJson.version);
 
 program
   .command('remember')
@@ -196,22 +200,109 @@ program
 
 program
   .command('extract')
-  .description('Propose durable memories from the current git diff (LLM-assisted, never auto-stores)')
-  .option('--endpoint <url>', 'LLM endpoint (or MEM_LLM_ENDPOINT env)')
-  .option('--api-key <key>', 'LLM API key (or MEM_LLM_API_KEY env)')
-  .option('--model <name>', 'LLM model (default: MEM_LLM_MODEL or gpt-4o-mini)')
-  .option('--local-only', 'use only local heuristics, never send anything to an LLM')
+  .description('Propose durable memories from git history (LLM-assisted; nothing writes without your y/n)')
+  .option('--since <ref>', 'git ref to extract since, e.g. HEAD~20 (default: HEAD~20)', undefined)
+  .option('--provider <name>', 'override provider: ollama|anthropic')
+  .option('--endpoint <url>', 'override provider endpoint')
+  .option('--api-key <key>', 'override API key (anthropic)')
+  .option('--model <name>', 'override model name')
   .option('--dry-run', 'print proposals without storing anything')
-  .action(async (opts: { endpoint?: string; apiKey?: string; model?: string; localOnly?: boolean; dryRun?: boolean }) => {
-    if (opts.localOnly) {
-      process.env.MEM_LLM_ENDPOINT = '';
-    }
+  .action(async (opts: { since?: string; provider?: string; endpoint?: string; apiKey?: string; model?: string; dryRun?: boolean }) => {
     await extractAndStore({
+      since: opts.since,
+      provider: opts.provider,
       endpoint: opts.endpoint,
       apiKey: opts.apiKey,
       model: opts.model,
       dryRun: opts.dryRun,
     });
+  });
+
+program
+  .command('extract-eval')
+  .description('Precision/recall of extraction against a hand-labeled commit set')
+  .argument('<labels>', 'path to labels JSON: [{ "hash", "expected": "yes"|"no", "expected_tier"? }]')
+  .option('--provider <name>', 'override provider: ollama|anthropic')
+  .option('--endpoint <url>', 'override provider endpoint')
+  .option('--api-key <key>', 'override API key (anthropic)')
+  .option('--model <name>', 'override model name')
+  .action(async (labelsPath: string, opts: { provider?: string; endpoint?: string; apiKey?: string; model?: string }) => {
+    const labels = JSON.parse(readFileSync(resolve(labelsPath), 'utf8')) as LabeledCommit[];
+    const r = await runExtractionEval(labels, {
+      provider: opts.provider,
+      endpoint: opts.endpoint,
+      apiKey: opts.apiKey,
+      model: opts.model,
+    });
+    console.log(`\nExtraction eval (${r.total} labeled commits)`);
+    console.log(`precision: ${(r.precision * 100).toFixed(1)}%  (tp=${r.tp}, fp=${r.fp})`);
+    console.log(`recall:    ${(r.recall * 100).toFixed(1)}%  (tp=${r.tp}, fn=${r.fn})`);
+    console.log(`f1:        ${(r.f1 * 100).toFixed(1)}%`);
+    for (const c of r.perCommit) {
+      console.log(
+        `  [${c.hash}] label=${c.label} proposals=${c.proposals.length} :: ${c.subject}`
+      );
+    }
+  });
+
+program
+  .command('config')
+  .description('Show or set mem configuration (extraction provider)')
+  .argument('[set]', 'subcommand: set-provider')
+  .argument('[value]', 'provider name: ollama|anthropic')
+  .option('--endpoint <url>', 'provider endpoint (e.g. Ollama URL)')
+  .option('--model <name>', 'provider model name')
+  .action((sub, value, opts: { endpoint?: string; model?: string }) => {
+    if (sub === 'set-provider') {
+      if (value !== 'ollama' && value !== 'anthropic') {
+        console.error('provider must be one of: ollama, anthropic');
+        process.exit(1);
+      }
+      const cfg = readConfig();
+      cfg.provider = { ...cfg.provider, name: value };
+      if (opts.endpoint) {
+        cfg.provider.endpoint = opts.endpoint;
+      } else if (value === 'ollama') {
+        cfg.provider.endpoint = 'http://localhost:11434';
+      } else {
+        delete cfg.provider.endpoint;
+      }
+      if (opts.model) {
+        cfg.provider.model = opts.model;
+      } else {
+        delete cfg.provider.model;
+      }
+      writeConfig(cfg);
+      console.log(`configured ${describeConfig({ name: value, endpoint: cfg.provider.endpoint ?? null, model: cfg.provider.model ?? null })}`);
+      if (value === 'anthropic') {
+        console.log('Note: anthropic reads ANTHROPIC_API_KEY from the environment.');
+      }
+      return;
+    }
+    const cfg = loadConfig();
+    console.log(`provider: ${describeConfig(cfg)}`);
+    console.log(`config file: ${DB_PATH.replace('memories.db', 'config.json')}`);
+  });
+
+program
+  .command('migrate')
+  .description('Show schema migrations and apply any pending ones')
+  .action(() => {
+    const db = openDb();
+    const applied = getAppliedVersions(db);
+    for (const m of discoverMigrations()) {
+      const done = applied.includes(m.version);
+      console.log(`${done ? 'applied  ' : 'pending  '} ${m.name}`);
+    }
+    db.close();
+  });
+
+program
+  .command('reembed')
+  .description('Re-embed all memories with the current model after an embedding upgrade')
+  .action(async () => {
+    const { total, done, failed } = await reembedAll();
+    console.log(`reembedded ${done}/${total} memories (failed ${failed}).`);
   });
 
 program

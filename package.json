@@ -1,6 +1,6 @@
 {
   "name": "mem",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Universal contextual memory for AI coding tools — local-first CLI + MCP server",
   "license": "MIT",
   "author": "Rahul Samariya",
@@ -32,7 +32,8 @@
     "mem-mcp": "dist/mcp-server.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "migrations"
   ],
   "scripts": {
     "build": "tsc",

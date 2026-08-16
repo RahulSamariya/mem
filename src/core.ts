@@ -3,6 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import Database from 'better-sqlite3';
 import * as vec from 'sqlite-vec';
+import { migrate, getAppliedVersions, discoverMigrations, setMigrationsDir } from './migrate';
 
 export const MEM_HOME = path.join(os.homedir(), '.mem');
 
@@ -11,6 +12,8 @@ export const DB_PATH = path.join(MEM_HOME, 'memories.db');
 export const MODEL_CACHE_DIR = path.join(MEM_HOME, 'models');
 
 export const DEFAULT_MODEL = 'Xenova/all-MiniLM-L6-v2';
+
+export const EMBEDDING_MODEL_VERSION = 'minilm-l6-v2';
 
 export const EMBEDDING_DIMS = 384;
 
@@ -26,6 +29,7 @@ export interface MemoryRow {
   source: Source;
   created_at: string;
   last_validated_at: string;
+  embedding_model_version: string;
 }
 
 export interface RecallResult {
@@ -39,6 +43,7 @@ export interface RecallResult {
   last_validated_at: string;
   score: number;
   age_label: string;
+  embedding_model_version: string;
 }
 
 export function ensureMemHome(): void {
@@ -46,28 +51,42 @@ export function ensureMemHome(): void {
   fs.mkdirSync(MODEL_CACHE_DIR, { recursive: true });
 }
 
+const CONFIG_PATH = path.join(MEM_HOME, 'config.json');
+
+export interface MemConfig {
+  provider?: {
+    name?: 'ollama' | 'anthropic';
+    endpoint?: string;
+    model?: string;
+  };
+}
+
+export function readConfig(): MemConfig {
+  ensureMemHome();
+  try {
+    return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+export function writeConfig(cfg: MemConfig): void {
+  ensureMemHome();
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
+}
+
 export function openDb(): Database.Database {
   ensureMemHome();
+  try {
+    setMigrationsDir(path.join(__dirname, '..', 'migrations'));
+    void discoverMigrations();
+  } catch {
+    // no migrations dir found; skip applying (best-effort)
+  }
   const db = new Database(DB_PATH);
   db.pragma('journal_mode = WAL');
   db.loadExtension(vec.getLoadablePath());
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS memories (
-      id TEXT PRIMARY KEY,
-      text TEXT NOT NULL,
-      embedding BLOB NOT NULL,
-      tier TEXT NOT NULL,
-      file_tags TEXT NOT NULL,
-      project TEXT NOT NULL,
-      source TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      last_validated_at TEXT NOT NULL
-    );
-    CREATE VIRTUAL TABLE IF NOT EXISTS memory_vec USING vec0(
-      memory_id TEXT PRIMARY KEY,
-      embedding FLOAT[384]
-    );
-  `);
+  migrate(db);
   return db;
 }
 

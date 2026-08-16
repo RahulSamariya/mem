@@ -8,6 +8,7 @@ import {
   parseFileTags,
   ageLabel,
   fileOverlap,
+  EMBEDDING_MODEL_VERSION,
 } from './core';
 import { embed, toBuffer } from './embed';
 
@@ -34,11 +35,12 @@ export async function storeMemory(input: InsertInput): Promise<MemoryRow> {
     source: input.source,
     created_at: now,
     last_validated_at: now,
+    embedding_model_version: EMBEDDING_MODEL_VERSION,
   };
   const insertTx = db.transaction(() => {
     db.prepare(
-      `INSERT INTO memories (id, text, embedding, tier, file_tags, project, source, created_at, last_validated_at)
-       VALUES (@id, @text, @embedding, @tier, @file_tags, @project, @source, @created_at, @last_validated_at)`
+      `INSERT INTO memories (id, text, embedding, tier, file_tags, project, source, created_at, last_validated_at, embedding_model_version)
+       VALUES (@id, @text, @embedding, @tier, @file_tags, @project, @source, @created_at, @last_validated_at, @embedding_model_version)`
     ).run({ ...row, embedding: toBuffer(vector) });
     db.prepare(
       `INSERT INTO memory_vec (memory_id, embedding) VALUES (?, ?)`
@@ -60,6 +62,20 @@ export async function recall(query: string, opts: RecallOptions = {}): Promise<R
   const limit = opts.limit ?? 5;
   const strategy = opts.strategy ?? 'semantic';
   const db = openDb();
+  // §8 safety: warn if any stored vectors are from a different embedding model.
+  try {
+    const versions = db
+      .prepare(`SELECT DISTINCT embedding_model_version AS v FROM memories`)
+      .all() as { v: string | null }[];
+    if (versions.some((r) => r.v !== EMBEDDING_MODEL_VERSION)) {
+      console.warn(
+        `[mem] WARNING: some memories were embedded with a different model (expected ${EMBEDDING_MODEL_VERSION}). ` +
+          `Run "mem reembed" before trusting recall results.`
+      );
+    }
+  } catch {
+    // column may not exist on very old DBs; fail soft
+  }
   const qv = await embed(query);
   const q = JSON.stringify(qv);
 
@@ -114,12 +130,43 @@ export async function recall(query: string, opts: RecallOptions = {}): Promise<R
       last_validated_at: mem.last_validated_at,
       score,
       age_label: ageLabel(mem.created_at, now),
+      embedding_model_version: mem.embedding_model_version ?? EMBEDDING_MODEL_VERSION,
     });
   }
 
   scored.sort((a, b) => b.score - a.score);
   db.close();
   return scored.slice(0, limit);
+}
+
+export async function reembedAll(): Promise<{ total: number; done: number; failed: number }> {
+  // §8: re-run every stored memory's text through the current embedding model and
+  // update its vector + model-version tag. Run after any embedding model upgrade.
+  const db = openDb();
+  const rows = db.prepare(`SELECT * FROM memories`).all() as MemoryRow[];
+  let done = 0;
+  let failed = 0;
+  for (const row of rows) {
+    try {
+      const vector = await embed(row.text);
+      db.transaction(() => {
+        db.prepare(`UPDATE memories SET embedding = ?, embedding_model_version = ? WHERE id = ?`).run(
+          toBuffer(vector),
+          EMBEDDING_MODEL_VERSION,
+          row.id
+        );
+        db.prepare(`UPDATE memory_vec SET embedding = ? WHERE memory_id = ?`).run(
+          toBuffer(vector),
+          row.id
+        );
+      })();
+      done++;
+    } catch {
+      failed++;
+    }
+  }
+  db.close();
+  return { total: rows.length, done, failed };
 }
 
 export async function getAllMemories(): Promise<MemoryRow[]> {
