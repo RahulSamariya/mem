@@ -1,0 +1,64 @@
+{
+  "name": "mem",
+  "version": "1.0.0",
+  "description": "Universal contextual memory for AI coding tools — local-first CLI + MCP server",
+  "license": "MIT",
+  "author": "Rahul Samariya",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RahulSamariya/mem.git"
+  },
+  "bugs": {
+    "url": "https://github.com/RahulSamariya/mem/issues"
+  },
+  "homepage": "https://github.com/RahulSamariya/mem#readme",
+  "keywords": [
+    "mcp",
+    "memory",
+    "ai",
+    "code-assistant",
+    "cli",
+    "vector-search",
+    "sqlite",
+    "local-first",
+    "llm",
+    "context"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "mem": "dist/index.js",
+    "mem-mcp": "dist/mcp-server.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test dist/*.test.js",
+    "start": "node dist/index.js",
+    "mcp": "node dist/mcp-server.js",
+    "dev": "tsc -w"
+  },
+  "type": "commonjs",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@xenova/transformers": "^2.17.2",
+    "better-sqlite3": "^13.0.3",
+    "commander": "^15.0.0",
+    "sqlite-vec": "^0.1.9",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  },
+  "allowScripts": {
+    "sharp@0.32.6": true,
+    "protobufjs@6.11.6": true,
+    "better-sqlite3@13.0.3": true
+  }
+}

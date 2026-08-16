@@ -1,0 +1,66 @@
+[
+  {
+    "query": "why did we choose SQLite over Postgres for storage",
+    "expected_memory_id": "814abe46-31bb-459f-ba34-0424494d7f5e"
+  },
+  {
+    "query": "what went wrong when we tried Redis for caching",
+    "expected_memory_id": "707e0b36-5f87-48e3-baa2-78ca535c57ba"
+  },
+  {
+    "query": "which vector search library do we use",
+    "expected_memory_id": "98916ca0-cda4-4082-b186-72a20cf42483"
+  },
+  {
+    "query": "what embedding model and dimension size are we running",
+    "expected_memory_id": "d97120aa-435b-455a-9209-cb036d37492e"
+  },
+  {
+    "query": "does the embedding model need an API key or external service",
+    "expected_memory_id": "c8bb1df8-2230-496d-aeb0-dd93a8d2d24e"
+  },
+  {
+    "query": "what CLI framework did we pick",
+    "expected_memory_id": "45888133-0f83-40fe-9354-5181c5f70db4"
+  },
+  {
+    "query": "if we auto-commit extracted memories into the database is that allowed",
+    "expected_memory_id": "7e5642a0-8265-4ab3-bd5e-89266e79126a"
+  },
+  {
+    "query": "how do we define MCP tool parameters in the SDK",
+    "expected_memory_id": "2556c3d0-8fd3-499f-9079-c2d1a46d86a0"
+  },
+  {
+    "query": "why did sharp native module installation fail",
+    "expected_memory_id": "ef28a521-b5ea-43e9-b2f9-68bfc23e0536"
+  },
+  {
+    "query": "why does better-sqlite3 need a rebuild after npm install",
+    "expected_memory_id": "151bab23-7a4a-4ca6-ba9f-06b673bae203"
+  },
+  {
+    "query": "did the Raphson approach for ASCII art generation work",
+    "expected_memory_id": "cf36a81e-1cd8-49cb-9db9-81552383f451"
+  },
+  {
+    "query": "what tool do we use to search past project decisions",
+    "expected_memory_id": "98916ca0-cda4-4082-b186-72a20cf42483"
+  },
+  {
+    "query": "are we storing memory data locally on the machine",
+    "expected_memory_id": "814abe46-31bb-459f-ba34-0424494d7f5e"
+  },
+  {
+    "query": "what should never happen without explicit user confirmation",
+    "expected_memory_id": "7e5642a0-8265-4ab3-bd5e-89266e79126a"
+  },
+  {
+    "query": "is there anything we tried before that broke the local-first rule",
+    "expected_memory_id": "707e0b36-5f87-48e3-baa2-78ca535c57ba"
+  },
+  {
+    "query": "which package do we call for vector similarity search",
+    "expected_memory_id": "98916ca0-cda4-4082-b186-72a20cf42483"
+  }
+]
